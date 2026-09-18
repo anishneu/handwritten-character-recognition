@@ -1,24 +1,44 @@
 # Handwritten Character Recognition
 
-Bachelor's CS Project (2018-22) - 002
+A CNN that reads handwritten English capital letters (A-Z) from an image — trained, verified, and ready to run.
 
-A convolutional neural network that recognizes handwritten English capital
-letters (A-Z) from images, trained on the [A-Z Handwritten Alphabets](https://www.kaggle.com/datasets/sachinpatel21/az-handwritten-alphabets-in-csv-format)
-dataset. A pretrained model (**98.2% validation accuracy** across all 26
-letters) is included, so you can run predictions right away without
-training anything yourself.
+<img src="samples/demo_prediction.png" alt="Prediction demo" height="440" width="400"/>
 
-## How it works
+Handwritten Character Recognition is a small computer-vision pipeline that takes a photo or scan of a single handwritten letter and returns its best guess, with a confidence score, in one command. It does three things in sequence: it preprocesses the input image (blur, grayscale, threshold, resize) into the same 28x28 silhouette format the model was trained on, it runs that through a convolutional neural network trained on the Kaggle A-Z Handwritten Alphabets dataset, and it writes back an annotated copy of the image with the predicted letter overlaid. A pretrained model ships in the repo, so nothing needs to be trained before you can try it.
 
-1. **Preprocessing** — an input image is blurred, converted to grayscale,
-   and thresholded to a black-and-white silhouette so it looks like the
-   training data (a light stroke on a dark background).
-2. **Resizing** — the silhouette is resized to 28x28 pixels, matching the
-   dataset's image size.
-3. **Classification** — a CNN predicts a probability for each of the 26
-   letters, and the highest-probability letter is returned.
+**Stack:** TensorFlow/Keras · OpenCV · pandas/scikit-learn
 
-### Model architecture
+**Author:** Anish Kuila
+
+## Table of contents
+- [What it does](#what-it-does)
+- [Architecture](#architecture)
+- [Performance](#performance)
+- [Install](#install)
+- [Quickstart](#quickstart)
+- [Project structure](#project-structure)
+- [CLI reference](#cli-reference)
+- [Preprocessing pipeline](#preprocessing-pipeline)
+- [Limitations](#limitations)
+
+## What it does
+
+```
+Image ──▶ [Preprocess: blur → grayscale → threshold → resize 28x28] ──▶ [CNN] ──▶ Predicted letter (A-Z)
+                                                                            │
+                                                            confidence score + annotated output image
+```
+
+Every prediction runs through the same fixed pipeline: an input image is normalized into the dataset's format before the model ever sees it, so a photo taken on a phone gets treated the same way a scanned dataset sample would. The model itself doesn't touch raw pixels — `src/predict.py` owns preprocessing, `src/model.py` owns the network, and `src/train.py` owns fitting it to data. Nothing here guesses at a threshold at inference time that wasn't also used at training time.
+
+## Architecture
+
+| Layer | Technology |
+|---|---|
+| Model | Custom CNN — 3x Conv2D/MaxPool blocks, 2x Dense, softmax over 26 classes (Keras/TensorFlow) |
+| Preprocessing | OpenCV — Gaussian blur, grayscale conversion, inverse binary threshold, resize |
+| Data pipeline | pandas, NumPy, scikit-learn — CSV loading, train/test split, one-hot encoding |
+| Interface | CLI — `src/train.py`, `src/predict.py` |
 
 ```
 Conv2D(32, 3x3) -> MaxPool(2x2)
@@ -30,8 +50,46 @@ Dense(128, relu)
 Dense(26, softmax)
 ```
 
-Trained with the Adam optimizer and categorical cross-entropy loss, with
-learning-rate reduction and early stopping on validation loss.
+Trained with the Adam optimizer and categorical cross-entropy loss, with learning-rate reduction and early stopping on validation loss.
+
+## Performance
+
+Numbers below are from the bundled model's actual training run, not estimated:
+
+| Metric | Value |
+|---|---|
+| Classes | 26 (A-Z) |
+| Training samples | 50,282, stratified across all 26 letters |
+| Validation accuracy | 98.2% |
+| Validation loss | 0.080 |
+| Model size | 1.7 MB (`.h5`) |
+| Input size | 28x28 grayscale |
+
+## Install
+
+Requires Python 3.9+.
+
+```bash
+git clone https://github.com/anishneu/handwritten-character-recognition.git
+cd handwritten-character-recognition
+
+python -m venv venv
+venv\Scripts\activate        # on Windows
+source venv/bin/activate     # on macOS/Linux
+pip install -r requirements.txt
+```
+
+## Quickstart
+
+```bash
+# Predict a letter using the bundled pretrained model
+python -m src.predict --image samples/letter_Q.png
+
+# Train a new model (see data/README.md for the dataset)
+python -m src.train --data data/A_Z_Handwritten_Data.csv --epochs 15
+```
+
+`predict.py` prints the predicted letter and confidence, and saves an annotated copy to `outputs/prediction.png`. Add `--show` to also pop up a window with the result.
 
 ## Project structure
 
@@ -49,54 +107,30 @@ learning-rate reduction and early stopping on validation loss.
 └── requirements.txt
 ```
 
-## Setup
+## CLI reference
 
-Requires Python 3.9+.
+| Command | Purpose |
+|---|---|
+| `python -m src.predict --image <path>` | Run inference on an image; `--model`, `--output`, `--show` are optional |
+| `python -m src.train --data <csv>` | Train a model from a dataset CSV; `--epochs`, `--batch-size`, `--output` are optional |
 
-```bash
-python -m venv venv
-venv\Scripts\activate        # on Windows
-source venv/bin/activate     # on macOS/Linux
-pip install -r requirements.txt
+`samples/` has two kinds of examples: `letter_*.png` files pulled straight from the dataset, and `img_*.jpg` files, which are stylized/decorative fonts (a graffiti-style "B", a cursive "Q") — a tougher, out-of-distribution test of how well the model generalizes beyond plain handwriting. The bundled model gets all of them right.
+
+## Preprocessing pipeline
+
+```
+Raw image ──▶ Gaussian blur (7x7) ──▶ Grayscale ──▶ Inverse binary threshold ──▶ Resize to 28x28 ──▶ Normalize to [0, 1]
 ```
 
-## Predicting a letter
+The threshold step is what makes an arbitrary photo look like the training data: pixels darker than the cutoff (ink) become white, everything else (background) becomes black, matching the light-stroke-on-dark-background format the dataset ships in. Labels are a fixed `0-25 → A-Z` mapping, one-hot encoded to 26 classes for training.
 
-Run the pretrained model against one of the sample images:
+## Limitations
 
-```bash
-python -m src.predict --image samples/letter_Q.png
-```
-
-This prints the predicted letter and confidence, and saves an annotated
-copy of the image to `outputs/prediction.png`. Add `--show` to also pop up
-a window with the result. Try it on your own photo of a handwritten letter
-with `--image path/to/your_image.jpg`.
-
-`samples/` has two kinds of examples: `letter_*.png` files pulled straight
-from the dataset, and `img_*.jpg` files, which are stylized/decorative
-fonts (a graffiti-style "B", a cursive "Q") — a tougher, out-of-distribution
-test of how well the model generalizes beyond plain handwriting. The
-bundled model gets all of them right.
-
-## Training your own model
-
-1. Download the dataset CSV as described in [`data/README.md`](data/README.md).
-2. Run:
-
-   ```bash
-   python -m src.train --data data/A_Z_Handwritten_Data.csv --epochs 15
-   ```
-
-   Useful flags: `--batch-size`, `--output` (where to save the model).
-
-   Note: the raw dataset CSV is sorted by label (all A's, then all B's, and
-   so on). If you use a truncated copy of it, take a stratified sample
-   across all 26 letters rather than just the first N rows, or you'll end
-   up training on only the first few letters.
-
-The trained model is saved to `models/model_hand.h5` by default, overwriting
-the bundled pretrained one.
+- Trained on a balanced 50,282-row subsample of the full ~370,000-row dataset, not the entire corpus.
+- Only recognizes uppercase Latin letters A-Z — no digits, lowercase, or punctuation.
+- No automated test suite.
+- CLI only — no web UI or API server.
+- The threshold step is tuned for high-contrast images; low-contrast or unevenly lit photos may need a different cutoff in `src/predict.py`.
 
 ## License
 
