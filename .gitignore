@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+outputs/
+
+# Dataset files are large and downloaded separately, see data/README.md
+data/*.csv
